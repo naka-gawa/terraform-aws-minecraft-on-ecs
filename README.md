@@ -1,18 +1,16 @@
-<!--- terraform-<PROVIDER>-<NAME> の形で module 名をつける --->
-
-# terraform-module-template
+# terraform-aws-minecraft-on-ecs
 
 
 ## Summary
 
-<!--- ここに module の説明を書く --->
+This module creates the following resources in AWS.
 
 
 ## Example
 
 ```hcl
 module YOUR_MODULE {
-  source = "git@github.com:naka-gawa/terraform-<PROVIDER>-<NAME>.git?ref=vX.X.X"
+  source = "git@github.com:naka-gawa/terraform-aws-minecraft-on-ecs.git?ref=vX.X.X"
 }
 ```
 
