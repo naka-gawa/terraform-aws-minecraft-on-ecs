@@ -1,0 +1,14 @@
+# https://docs.github.com/ja/github/administering-a-repository/configuration-options-for-dependency-updates#
+version: 2
+updates:
+  - package-ecosystem: terraform
+    directory: "/"
+    schedule:
+      interval: daily
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-patch"
+    open-pull-requests-limit: 10
+    labels:
+      - "bump:patch"

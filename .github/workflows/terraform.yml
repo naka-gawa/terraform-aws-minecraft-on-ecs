@@ -1,0 +1,143 @@
+name: terraform
+
+on:
+  pull_request:
+
+env:
+  AWS_DEFAULT_REGION: ap-northeast-1
+
+jobs:
+  versionExtract:
+    name: Extract Min/Max Versions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Extract Terraform min/max versions
+        id: minMax
+        uses: clowdhaus/terraform-min-max@main
+    outputs:
+      minVersion: ${{ steps.minMax.outputs.minVersion }}
+      maxVersion: ${{ steps.minMax.outputs.maxVersion }}
+
+  terraform-fmt:
+    name: Terraform Format
+    runs-on: ubuntu-latest
+    needs: versionExtract
+    strategy:
+      matrix:
+        version:
+          - ${{ needs.versionExtract.outputs.minVersion }}
+          - ${{ needs.versionExtract.outputs.maxVersion }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+          token: ${{secrets.GITHUB_TOKEN}}
+
+      - uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ matrix.version }}
+
+      - name: Terraform fmt v${{ matrix.version }}
+        id: fmt
+        run: terraform fmt -check -recursive -diff -no-color
+        continue-on-error: true
+
+      - uses: actions/github-script@v2
+        if: steps.fmt.outputs.exitcode != 0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = function(){/*
+            #### Terraform Format and Style `${{ steps.fmt.outcome }}`
+            ```diff\n${{ steps.fmt.outputs.stdout }}```
+
+            *Pusher: @${{ github.actor }}, Action: `${{ github.event_name }}`, Workflow: `${{ github.workflow }}`*
+            */}.toString().split("\n").slice(1,-1).join("\n")
+
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+            throw "failed to run `terraform fmt -check -recursive -diff`"
+
+  terraform-init-validate:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: versionExtract
+    strategy:
+      matrix:
+        version:
+          - ${{ needs.versionExtract.outputs.minVersion }}
+          - ${{ needs.versionExtract.outputs.maxVersion }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+          token: ${{secrets.GITHUB_TOKEN}}
+
+      - uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ matrix.version }}
+
+      # enable to use private module in private module
+      # cf. https://github.com/hashicorp/setup-terraform/issues/33
+      - name: Terraform Init v${{ matrix.version }}
+        id: init
+        run: |
+          git config --global url."https://oauth2:${GITHUB_TOKEN}@github.com".insteadOf https://github.com
+          terraform init -no-color
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/github-script@v2
+        if: steps.init.outputs.exitcode != 0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Init \`${{ steps.init.outcome }}\`
+            \`\`\`${{ steps.init.outputs.stderr }}\`\`\`
+
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Workflow: \`${{ github.workflow }}\`*`;
+
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+            throw "failed to run `terraform init`"
+
+      - name: Terraform Validate v${{ matrix.version }}
+        id: validate
+        run: terraform validate -no-color
+        continue-on-error: true
+
+      - uses: actions/github-script@v2
+        if: steps.validate.outputs.exitcode != 0
+        env:
+          STDOUT: "terraform\n${{ steps.validate.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Init \`${{ steps.init.outcome }}\`
+            #### Terraform Validate \`${{ steps.validate.outcome }}\`
+            \`\`\`${{ steps.validate.outputs.stderr }}\`\`\`
+
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Workflow: \`${{ github.workflow }}\`*`;
+
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+            throw "failed to run `terraform validate`"
